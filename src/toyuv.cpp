@@ -4,10 +4,11 @@
 #include<algorithm>
 #include<exception>
 #include<source_location>
+#include<memory>
 
 class yuv_exception:public std::exception
 {
-    const char *s;
+    const char *s="yuv default exception";
     std::source_location location;
 public:
     yuv_exception(const std::source_location& location = std::source_location::current()):location{location}{}
@@ -17,6 +18,12 @@ public:
         return s;
     };
 };
+
+void fclose_wrapper(FILE *fp)
+{
+    if(fp)
+        fclose(fp);
+}
 
 struct rgb_t
 {
@@ -54,28 +61,25 @@ struct image_rgb_t
 
     void read_ppm(const char *s)
     {
-        FILE *fp=fopen(s,"r");
+        FILE *fp=fopen(s,"rb");
         if(!fp)
             throw yuv_exception("image_rgb_t open ppm file failed");
+        std::unique_ptr<FILE,decltype(&fclose_wrapper)> ptr(fp,fclose_wrapper);
         char type[8]={};
         fscanf(fp, "%s", type);
-        int width,height,max;
-        fscanf(fp,"%d %d %d", &width, &height, &max);
-        this->width=width;
-        this->height=height;
-        v.clear();
-        v.resize(width*height);
-        for(int i=0;i<height;i++)
+        if(std::string(type)=="P3")
         {
-            for(int j=0;j<width;j++)
-            {
-                int r,g,b;
-                fscanf(fp, "%d %d %d", &r, &g, &b);
-                v[i*width+j] = rgb_t{1.0*r/max,1.0*g/max,1.0*b/max};
-            }
+            read_ppm_p3(fp);
         }
-        
-        fclose(fp);
+        else if(std::string(type)=="P6")
+        {
+            read_ppm_p6(fp);
+        }
+        else
+        {
+            throw yuv_exception("ppm format error");
+        }
+
     }
 
     void dump_rgb24(FILE *fp)
@@ -96,6 +100,43 @@ struct image_rgb_t
             fputc(255*i.g, fp);
             fputc(255*i.b, fp);
             fputc(0, fp);
+        }
+    }
+private:
+    void read_ppm_p3(FILE *fp)
+    {
+        int width,height,max;
+        fscanf(fp,"%d %d %d", &width, &height, &max);
+        this->width=width;
+        this->height=height;
+        v.clear();
+        v.resize(width*height);
+        for(int i=0;i<height;i++)
+        {
+            for(int j=0;j<width;j++)
+            {
+                int r,g,b;
+                fscanf(fp, "%d %d %d", &r, &g, &b);
+                v[i*width+j] = rgb_t{1.0*r/max,1.0*g/max,1.0*b/max};
+            }
+        }
+    }
+    void read_ppm_p6(FILE *fp)
+    {
+        int width,height,max;
+        fscanf(fp,"%d %d %d", &width, &height, &max);
+        this->width=width;
+        this->height=height;
+        v.clear();
+        v.resize(width*height);
+        fgetc(fp);
+        for(int i=0;i<height;i++)
+        {
+            for(int j=0;j<width;j++)
+            {
+                int r=fgetc(fp),g=fgetc(fp),b=fgetc(fp);
+                v[i*width+j] = rgb_t{1.0*r/max,1.0*g/max,1.0*b/max};
+            }
         }
     }
 };
@@ -183,8 +224,17 @@ struct image_yuv_t
         {
             for(int j=0;j<width;j+=2)
             {
-                auto au = (v[i*width+j].u+v[i*width+j+1].u+v[(i+1)*width+j].u+v[(i+1)*width+j+1].u)/4;
-                auto av = (v[i*width+j].v+v[i*width+j+1].v+v[(i+1)*width+j].v+v[(i+1)*width+j+1].v)/4;
+                double au,av;
+                if(i+1<height && j+1<width)
+                {
+                    au = (v[i*width+j].u+v[i*width+j+1].u+v[(i+1)*width+j].u+v[(i+1)*width+j+1].u)/4;
+                    av = (v[i*width+j].v+v[i*width+j+1].v+v[(i+1)*width+j].v+v[(i+1)*width+j+1].v)/4;
+                }
+                else
+                {
+                    au = v[i*width+j].u;
+                    av = v[i*width+j].v;
+                }
                 fputc(255*au, fp);
                 fputc(255*av, fp);
             }
