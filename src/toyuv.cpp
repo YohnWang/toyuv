@@ -5,6 +5,8 @@
 #include<exception>
 #include<source_location>
 #include<memory>
+#include<format>
+#include<filesystem>
 
 class yuv_exception:public std::exception
 {
@@ -289,19 +291,57 @@ int main(int argc, const char *argv[])
         throw yuv_exception("toyuv need a name of ppm file");
     }
 
-    std::string filename{argv[1]};
+    std::string format="nv12";
+    std::string output;
+    std::string input; 
+    bool quiet=false;
+
+    for(int i=1;i<argc;i++)
+    {
+        if(std::string_view(argv[i])=="-f" || std::string_view(argv[i])=="--format")
+        {
+            format=argv[i+1];
+            i++;
+        }
+        else if(std::string_view(argv[i])=="-o")
+        {
+            output=argv[i+1];
+            i++;
+        }
+        else if(std::string_view(argv[i])=="-q"||std::string_view(argv[i])=="--quiet")
+        {
+            quiet=true;
+        }
+        else
+        {
+            input=argv[i];
+        }
+    }
 
     image_rgb_t src;
-    src.read_ppm(filename.c_str());
+    src.read_ppm(input.c_str());
+
+    if(output.empty())
+    {
+        namespace fs = std::filesystem;
+        fs::path input_path=input;
+        fs::path input_basename=input_path.filename();
+        output=std::format("{}.{}x{}.{}",input_basename.string(),src.width,src.height,format);
+    }
 
     image_yuv_t dst=src;
-    FILE *fp=fopen((filename+"."+std::to_string(src.width)+"x"+std::to_string(src.height)+".yuv").c_str(),"wb");
+    FILE *fp=fopen(output.c_str(),"wb");
     if(!fp)
     {
         throw yuv_exception("create file failed");
     }
-    dst.dump_nv12(fp);
+
+    if(format=="nv12"||format=="yuv420sp")
+        dst.dump_nv12(fp);
+    else if(format=="nv16"||format=="yuv422sp")
+        dst.dump_nv16(fp);
     fclose(fp);
     
-    printf("%d %d\n", src.width, src.height);
+    if(!quiet)
+        printf("%d %d\n", src.width, src.height);
 }
