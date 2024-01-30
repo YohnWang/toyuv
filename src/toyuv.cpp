@@ -257,8 +257,18 @@ struct image_yuv_t
         {
             for(int j=0;j<width;j+=2)
             {
-                auto au=(v[i*width+j].u+v[i*width+j+1].u)/2;
-                auto av=(v[i*width+j].v+v[i*width+j+1].v)/2;
+                double au,av;
+                if(j+1<width)
+                {
+                    au=(v[i*width+j].u+v[i*width+j+1].u)/2;
+                    av=(v[i*width+j].v+v[i*width+j+1].v)/2;
+                }
+                else
+                {
+                    au=v[i*width+j].u;
+                    av=v[i*width+j].v;
+                }
+
                 fputc(255*au, fp);
                 fputc(255*av, fp);
             }
